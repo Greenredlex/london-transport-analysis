@@ -1,0 +1,6 @@
+2025-03-18 00:37:14,625 - INFO - Starting direct bike data processing...
+2025-03-18 00:37:14,625 - INFO - Found 62 bike data files to process
+2025-03-18 00:37:14,626 - INFO - Processing file 1/62: 350JourneyDataExtract26Dec2022-01Jan2023.csv
+2025-03-18 00:37:14,701 - ERROR - Error processing file data/raw/Bike\350JourneyDataExtract26Dec2022-01Jan2023.csv: Can only use .dt accessor with datetimelike values
+2025-03-18 00:37:14,701 - INFO - Processing file 2/62: 351JourneyDataExtract02Jan2023-08Jan2023.csv
+2025-03-18 00:37:15,041 - INFO - Processing 790 new stations

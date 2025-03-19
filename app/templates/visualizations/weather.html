@@ -1,0 +1,684 @@
+{% extends "base.html" %}
+
+{% block title %}London Weather Analysis{% endblock %}
+
+{% block extra_head %}
+<!-- Additional libraries for interactive charts -->
+<script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<style>
+    .chart-container {
+        position: relative;
+        height: 400px;
+        margin-bottom: 2rem;
+    }
+    
+    .chart-controls {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.5rem;
+    }
+    
+    .chart-controls button {
+        margin-left: 0.5rem;
+    }
+    
+    .weather-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .weather-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-transition">
+    <div class="mb-8">
+        <h1 class="text-3xl font-display font-bold mb-2">London Weather Analysis (2019-2023)</h1>
+        <p class="text-gray-600">Explore London's weather patterns and trends over the past five years.</p>
+    </div>
+
+    <!-- Year Range Selector -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex flex-wrap items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Select Date Range</h2>
+            <div class="flex space-x-4">
+                <div>
+                    <label for="start-date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                    <input type="date" id="start-date" name="start-date" min="2019-01-01" max="2023-12-31" value="2019-01-01"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
+                        onfocus="this.value='';" onblur="if(this.value===''){this.value='2019-01-01';} filterAndUpdateCharts();">
+                </div>
+                <div>
+                    <label for="end-date" class="block text-sm font-medium text-gray-700">End Date</label>
+                    <input type="date" id="end-date" name="end-date" min="2019-01-01" max="2023-12-31" value="2023-12-31"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
+                        onfocus="this.value='';" onblur="if(this.value===''){this.value='2023-12-31';} filterAndUpdateCharts();">
+                </div>
+                <div class="flex items-end">
+                    <button id="update-charts" class="bg-primary hover:bg-accent text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors">
+                        Update Charts
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weather Overview Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div class="weather-card bg-white rounded-lg shadow-md p-6 border-t-4 border-blue-500">
+            <h3 class="text-lg font-semibold mb-2">Total Days</h3>
+            <p class="text-3xl font-bold text-blue-500" id="total-days">--</p>
+            <p class="text-sm text-gray-500 mt-2">Total number of days in the selected date range</p>
+        </div>
+        <div class="weather-card bg-white rounded-lg shadow-md p-6 border-t-4 border-primary">
+            <h3 class="text-lg font-semibold mb-2">Average Temperature</h3>
+            <p class="text-3xl font-bold text-primary" id="avg-temp">--°C</p>
+            <p class="text-sm text-gray-500 mt-2">Average daily temperature over the selected period</p>
+        </div>
+        
+        <div class="weather-card bg-white rounded-lg shadow-md p-6 border-t-4 border-secondary">
+            <h3 class="text-lg font-semibold mb-2">Max Temperature</h3>
+            <p class="text-3xl font-bold text-secondary" id="max-temp">--°C</p>
+            <p class="text-sm text-gray-500 mt-2">Highest recorded temperature</p>
+        </div>
+        
+        <div class="weather-card bg-white rounded-lg shadow-md p-6 border-t-4 border-accent">
+            <h3 class="text-lg font-semibold mb-2">Min Temperature</h3>
+            <p class="text-3xl font-bold text-accent" id="min-temp">--°C</p>
+            <p class="text-sm text-gray-500 mt-2">Lowest recorded temperature</p>
+        </div>
+        
+        <div class="weather-card bg-white rounded-lg shadow-md p-6 border-t-4 border-dark">
+            <h3 class="text-lg font-semibold mb-2">Rainy Days</h3>
+            <p class="text-3xl font-bold text-dark" id="rainy-days">--</p>
+            <p class="text-sm text-gray-500 mt-2">Number of days with rainfall</p>
+        </div>
+    </div>
+
+    <!-- Temperature Chart -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Temperature Trends</h2>
+            <div class="chart-controls">
+                <button id="reset-temp-zoom" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded focus:outline-none focus:shadow-outline transition-colors">
+                    Reset Zoom
+                </button>
+            </div>
+        </div>
+        <p class="text-gray-600 mb-4">Daily maximum, minimum, and ground temperatures in London over time.</p>
+        <div class="chart-container">
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        <p class="text-sm text-gray-500 mt-2">Tip: Use mouse wheel to zoom, click and drag to pan</p>
+    </div>
+
+    <!-- Rainfall Chart -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Rainfall Analysis</h2>
+            <div class="chart-controls">
+                <button id="reset-rain-zoom" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded focus:outline-none focus:shadow-outline transition-colors">
+                    Reset Zoom
+                </button>
+            </div>
+        </div>
+        <p class="text-gray-600 mb-4">Daily rainfall measurements in London.</p>
+        <div class="chart-container">
+            <canvas id="rainfallChart"></canvas>
+        </div>
+        <p class="text-sm text-gray-500 mt-2">Tip: Use mouse wheel to zoom, click and drag to pan</p>
+    </div>
+
+    <!-- Sunshine Hours Chart -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Sunshine Hours</h2>
+            <div class="chart-controls">
+                <button id="reset-sun-zoom" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded focus:outline-none focus:shadow-outline transition-colors">
+                    Reset Zoom
+                </button>
+            </div>
+        </div>
+        <p class="text-gray-600 mb-4">Daily sunshine hours in London.</p>
+        <div class="chart-container">
+            <canvas id="sunshineChart"></canvas>
+        </div>
+        <p class="text-sm text-gray-500 mt-2">Tip: Use mouse wheel to zoom, click and drag to pan</p>
+    </div>
+
+    <!-- Monthly Averages Chart -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-semibold mb-4">Monthly Weather Averages</h2>
+        <p class="text-gray-600 mb-4">Average temperature and rainfall by month over the selected period.</p>
+        <div class="chart-container">
+            <canvas id="monthlyAveragesChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Global chart instances
+    let temperatureChart, rainfallChart, sunshineChart, monthlyAveragesChart;
+    
+    // Global data storage
+    let allWeatherData = null;
+    
+    // Function to format dates from YYYYMMDD to YYYY-MM-DD
+    function formatDate(dateStr) {
+        return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+    }
+    
+    // Function to parse date string to YYYYMMDD format
+    function parseDateToYYYYMMDD(dateStr) {
+        return dateStr.replace(/-/g, '');
+    }
+    
+    // Function to load all weather data once
+    function loadAllWeatherData() {
+        // Show loading indicators
+        document.querySelectorAll('.chart-container').forEach(container => {
+            container.classList.add('opacity-50');
+        });
+        
+        // Fetch all weather data from API (2019-2023)
+        fetch('/api/weather?start_date=2019-01-01&end_date=2023-12-31')
+            .then(response => response.json())
+            .then(data => {
+                // Store all data
+                allWeatherData = data;
+                
+                // Initial filter with default date range
+                filterAndUpdateCharts();
+                
+                // Hide loading indicators
+                document.querySelectorAll('.chart-container').forEach(container => {
+                    container.classList.remove('opacity-50');
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching weather data:', error);
+                alert('Failed to load weather data. Please try again later.');
+            });
+    }
+    
+    // Function to filter data based on selected date range and update charts
+    function filterAndUpdateCharts() {
+        if (!allWeatherData) return;
+        
+        const startDate = parseInt(parseDateToYYYYMMDD(document.getElementById('start-date').value));
+        const endDate = parseInt(parseDateToYYYYMMDD(document.getElementById('end-date').value));
+        
+        // Filter daily data
+        const filteredDailyData = allWeatherData.daily.filter(item => {
+            const itemDate = parseInt(item.date);
+            return itemDate >= startDate && itemDate <= endDate;
+        });
+        
+        // Calculate summary statistics from filtered data
+        const avgTemp = filteredDailyData.reduce((sum, item) => sum + ((item.tx + item.tn) / 2) / 10, 0) / filteredDailyData.length;
+        const maxTemp = Math.max(...filteredDailyData.map(item => item.tx)) / 10;
+        const minTemp = Math.min(...filteredDailyData.map(item => item.tn)) / 10;
+        const rainyDays = filteredDailyData.filter(item => item.rr > 0).length;
+        
+        // Update summary cards
+        document.getElementById('avg-temp').textContent = `${avgTemp.toFixed(1)}°C`;
+        document.getElementById('max-temp').textContent = `${maxTemp.toFixed(1)}°C`;
+        document.getElementById('min-temp').textContent = `${minTemp.toFixed(1)}°C`;
+        document.getElementById('rainy-days').textContent = rainyDays;
+        document.getElementById('total-days').textContent = filteredDailyData.length;
+        
+        // Calculate monthly averages from filtered data
+        const monthlyData = calculateMonthlyAverages(filteredDailyData);
+        
+        // Update charts
+        updateTemperatureChart(filteredDailyData);
+        updateRainfallChart(filteredDailyData);
+        updateSunshineChart(filteredDailyData);
+        updateMonthlyAveragesChart(monthlyData);
+    }
+    
+    // Function to calculate monthly averages from daily data
+    function calculateMonthlyAverages(dailyData) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthlyAverages = Array(12).fill().map(() => ({
+            count: 0,
+            tempSum: 0,
+            rainSum: 0,
+            sunSum: 0
+        }));
+        
+        // Group data by month
+        dailyData.forEach(day => {
+            const month = parseInt(day.date.substring(4, 6)) - 1; // 0-based month index
+            monthlyAverages[month].count++;
+            monthlyAverages[month].tempSum += (day.tx + day.tn) / 2;
+            monthlyAverages[month].rainSum += day.rr;
+            monthlyAverages[month].sunSum += day.ss;
+        });
+        
+        // Calculate averages
+        return months.map((name, index) => {
+            const data = monthlyAverages[index];
+            if (data.count === 0) return null;
+            
+            return {
+                month: name,
+                avg_temp: (data.tempSum / data.count) / 10,
+                avg_rainfall: (data.rainSum / data.count) / 10,
+                avg_sunshine: (data.sunSum / data.count) / 10
+            };
+        }).filter(item => item !== null);
+    }
+    
+    // Function to load weather data and update charts
+    function loadWeatherData() {
+        // This function is now just a wrapper for filterAndUpdateCharts
+        // since we already have all the data loaded
+        filterAndUpdateCharts();
+    }
+    
+    // Function to update temperature chart
+    function updateTemperatureChart(data) {
+        const ctx = document.getElementById('temperatureChart').getContext('2d');
+        
+        const chartData = {
+            labels: data.map(d => formatDate(d.date)),
+            datasets: [
+                {
+                    label: 'Max Temperature (°C)',
+                    data: data.map(d => d.tx / 10), // Convert to Celsius
+                    borderColor: '#FF4F58',
+                    backgroundColor: 'rgba(255, 79, 88, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Min Temperature (°C)',
+                    data: data.map(d => d.tn / 10), // Convert to Celsius
+                    borderColor: '#00AEEF',
+                    backgroundColor: 'rgba(0, 174, 239, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Ground Temperature (°C)',
+                    data: data.map(d => d.tg / 10), // Convert to Celsius
+                    borderColor: '#0055A4',
+                    backgroundColor: 'rgba(0, 85, 164, 0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    fill: false,
+                    tension: 0.1
+                }
+            ]
+        };
+        
+        if (temperatureChart) {
+            temperatureChart.data = chartData;
+            temperatureChart.update();
+        } else {
+            temperatureChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month',
+                                displayFormats: {
+                                    month: 'MMM YYYY'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x'
+                            },
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    return moment(tooltipItems[0].label).format('MMM D, YYYY');
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Reset zoom button
+            document.getElementById('reset-temp-zoom').addEventListener('click', function() {
+                temperatureChart.resetZoom();
+            });
+        }
+    }
+    
+    // Function to update rainfall chart
+    function updateRainfallChart(data) {
+        const ctx = document.getElementById('rainfallChart').getContext('2d');
+        
+        const chartData = {
+            labels: data.map(d => formatDate(d.date)),
+            datasets: [
+                {
+                    label: 'Rainfall (mm)',
+                    data: data.map(d => d.rr / 10), // Convert to mm
+                    backgroundColor: 'rgba(0, 174, 239, 0.6)',
+                    borderColor: 'rgba(0, 174, 239, 1)',
+                    borderWidth: 1
+                }
+            ]
+        };
+        
+        if (rainfallChart) {
+            rainfallChart.data = chartData;
+            rainfallChart.update();
+        } else {
+            rainfallChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month',
+                                displayFormats: {
+                                    month: 'MMM YYYY',
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Rainfall (mm)'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x'
+                            },
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    return moment(tooltipItems[0].label).format('MMM D, YYYY');
+                                }
+                            }
+                        }
+                    },
+                    barThickness: 8, // Make bars thicker
+                    maxBarThickness: 10 // Set maximum thickness
+                }
+            });
+        }
+            
+            // Reset zoom button
+            document.getElementById('reset-rain-zoom').addEventListener('click', function() {
+                rainfallChart.resetZoom();
+            });
+        }
+    
+    
+    // Function to update sunshine hours chart
+    function updateSunshineChart(data) {
+        const ctx = document.getElementById('sunshineChart').getContext('2d');
+        
+        const chartData = {
+            labels: data.map(d => formatDate(d.date)),
+            datasets: [
+                {
+                    label: 'Sunshine Hours',
+                    data: data.map(d => d.ss / 10), // Convert to hours
+                    backgroundColor: 'rgba(255, 193, 7, 0.6)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    borderWidth: 1
+                }
+            ]
+        };
+        
+        if (sunshineChart) {
+            sunshineChart.data = chartData;
+            sunshineChart.update();
+        } else {
+            sunshineChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month',
+                                displayFormats: {
+                                    month: 'MMM YYYY'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Sunshine Hours'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x'
+                            },
+                            zoom: {
+                                wheel: {
+                                    enabled: true
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    return moment(tooltipItems[0].label).format('MMM D, YYYY');
+                                }
+                            }
+                        }
+                    },
+                    barThickness: 8, // Make bars thicker
+                    maxBarThickness: 10 // Set maximum thickness
+                }
+            });
+            
+            // Reset zoom button
+            document.getElementById('reset-sun-zoom').addEventListener('click', function() {
+                sunshineChart.resetZoom();
+            });
+        }
+    }
+    
+    // Function to update monthly averages chart
+    function updateMonthlyAveragesChart(data) {
+        const ctx = document.getElementById('monthlyAveragesChart').getContext('2d');
+        
+        const chartData = {
+            labels: data.map(d => d.month),
+            datasets: [
+                {
+                    label: 'Avg Temperature (°C)',
+                    data: data.map(d => d.avg_temp),
+                    borderColor: '#FF4F58',
+                    backgroundColor: 'rgba(255, 79, 88, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    type: 'line',
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Avg Rainfall (mm)',
+                    data: data.map(d => d.avg_rainfall),
+                    backgroundColor: 'rgba(0, 174, 239, 0.6)',
+                    borderColor: 'rgba(0, 174, 239, 1)',
+                    borderWidth: 1,
+                    type: 'bar',
+                    yAxisID: 'y1'
+                },
+                {
+                    label: 'Avg Sunshine Hours',
+                    data: data.map(d => d.avg_sunshine),
+                    backgroundColor: 'rgba(255, 193, 7, 0.6)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    borderWidth: 1,
+                    type: 'bar',
+                    yAxisID: 'y2'
+                }
+            ]
+        };
+        
+        if (monthlyAveragesChart) {
+            monthlyAveragesChart.data = chartData;
+            monthlyAveragesChart.update();
+        } else {
+            monthlyAveragesChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Temperature (°C)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Rainfall (mm)'
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load all data once
+        loadAllWeatherData();
+        
+        // Add loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.id = 'loading-indicator';
+        loadingIndicator.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        loadingIndicator.innerHTML = '<div class="bg-white p-5 rounded-lg shadow-lg"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div><p class="text-center">Loading weather data...</p></div>';
+        document.body.appendChild(loadingIndicator);
+        
+        // Hide loading indicator when data is loaded
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                const indicator = document.getElementById('loading-indicator');
+                if (indicator) {
+                    indicator.classList.add('opacity-0');
+                    setTimeout(function() {
+                        indicator.remove();
+                    }, 500);
+                }
+            }, 1000);
+        });
+        
+        // Update button event listener
+        document.getElementById('update-charts').addEventListener('click', filterAndUpdateCharts);
+        
+        // Date input event listeners for immediate updates
+        document.getElementById('start-date').addEventListener('change', filterAndUpdateCharts);
+        document.getElementById('end-date').addEventListener('change', filterAndUpdateCharts);
+    });
+</script>
+{% endblock %} 

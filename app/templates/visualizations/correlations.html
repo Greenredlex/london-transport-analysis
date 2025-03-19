@@ -1,0 +1,694 @@
+{% extends "base.html" %}
+
+{% block title %}London Transport & Weather Analysis{% endblock %}
+
+{% block extra_head %}
+    <!-- Leaflet.js for map visualization -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+    <!-- Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+    
+    <style>
+        .chart-container {
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .date-picker {
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            margin-right: 1rem;
+        }
+        .btn-primary {
+            background-color: #0055A4;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary:hover {
+            background-color: #004483;
+        }
+        .data-availability {
+            background-color: #f8fafc;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .data-availability h3 {
+            color: #1e293b;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .data-availability ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+        .data-availability li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            color: #475569;
+        }
+        .data-availability li::before {
+            content: "•";
+            color: #0055A4;
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+        .map-container {
+            height: 500px;
+            margin-bottom: 2rem;
+        }
+        #correlation-map {
+            height: 100%;
+            width: 100%;
+            border-radius: 8px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.875rem;
+        }
+        .legend-color {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .weather-color { background-color: #FF4F58; }
+        .bike-color { background-color: #10B981; }
+        .toggle-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .toggle-button {
+            padding: 0.5rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.5rem;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .toggle-button.active {
+            background: #0055A4;
+            color: white;
+            border-color: #0055A4;
+        }
+        .weather-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-gradient-to-b from-blue-50 to-white py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h1 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+                <span class="block text-primary">London Bike Usage & Weather Analysis</span>
+            </h1>
+            <p class="mt-3 max-w-2xl mx-auto text-xl text-gray-500 sm:mt-4">
+                Explore the relationship between weather conditions and bike sharing patterns in London
+            </p>
+        </div>
+
+        <!-- Data Availability Info -->
+        <div class="data-availability">
+            <h3>Data Availability</h3>
+            <ul>
+                <li>Weather Data: 2019-2023</li>
+                <li>Bike Data: 2023-2024</li>
+                <li>Complete analysis is available for 2023 when both datasets overlap</li>
+            </ul>
+        </div>
+
+        <!-- Date Range Selector -->
+        <div class="card mb-8">
+            <div class="flex items-center justify-center space-x-4 mb-4">
+                <input type="date" id="start-date" class="date-picker" value="2023-01-01">
+                <input type="date" id="end-date" class="date-picker" value="2023-12-31">
+                <button id="update-data" class="btn-primary">Update Data</button>
+            </div>
+        </div>
+
+        <!-- Combined Timeline Chart -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Daily Weather & Bike Usage</h2>
+            <div class="chart-container">
+                <canvas id="combined-timeline"></canvas>
+            </div>
+        </div>
+
+        <!-- Interactive Map -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Geographic Distribution</h2>
+            <div class="toggle-container">
+                <button class="toggle-button active" data-layer="weather">Weather Stations</button>
+                <button class="toggle-button" data-layer="bike">Bike Stations</button>
+                <button class="toggle-button" data-layer="all">All Stations</button>
+            </div>
+            <div class="map-container">
+                <div id="correlation-map"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color weather-color"></div>
+                    <span>Weather Stations</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color bike-color"></div>
+                    <span>Bike Stations</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Patterns -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Daily Patterns</h2>
+            <div class="chart-container">
+                <canvas id="daily-patterns"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let correlationMap;
+    let weatherLayer = L.layerGroup();
+    let bikeLayer = L.layerGroup();
+    let combinedTimelineChart = null;
+    let dailyPatternsChart = null;
+    let activeLayerName = 'weather';
+
+    // Initialize the map
+    function initMap() {
+        if (correlationMap) {
+            correlationMap.remove();
+        }
+
+        correlationMap = L.map('correlation-map').setView([51.5074, -0.1278], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(correlationMap);
+
+        // Create separate layers for each data type
+        weatherLayer = L.layerGroup().addTo(correlationMap);
+        bikeLayer = L.layerGroup().addTo(correlationMap);
+    }
+
+    // Format date (YYYYMMDD to YYYY-MM-DD)
+    function formatDate(dateStr) {
+        if (dateStr.includes('-')) return dateStr; // Already formatted
+        return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+    }
+
+    // Update combined timeline chart
+    function updateCombinedTimeline(data) {
+        const ctx = document.getElementById('combined-timeline').getContext('2d');
+        
+        if (combinedTimelineChart) {
+            combinedTimelineChart.destroy();
+        }
+
+        // Process timestamp data for x-axis
+        const formattedDates = data.dates.map(date => {
+            if (typeof date === 'string') {
+                return formatDate(date);
+            }
+            return date;
+        });
+
+        // Create datasets
+        const datasets = [];
+        
+        // Weather dataset
+        if (data.weather && data.weather.length > 0) {
+            datasets.push({
+                label: 'Temperature (°C)',
+                data: data.weather.map((temp, i) => ({
+                    x: formattedDates[i],
+                    y: temp
+                })),
+                borderColor: '#FF4F58',
+                backgroundColor: 'rgba(255, 79, 88, 0.1)',
+                yAxisID: 'y-weather',
+                tension: 0.4,
+                fill: false
+            });
+            
+            if (data.rainfall && data.rainfall.length > 0) {
+                datasets.push({
+                    label: 'Rainfall (mm)',
+                    data: data.rainfall.map((rain, i) => ({
+                        x: formattedDates[i],
+                        y: rain
+                    })),
+                    borderColor: '#00AEEF',
+                    backgroundColor: 'rgba(0, 174, 239, 0.1)',
+                    yAxisID: 'y-rainfall',
+                    tension: 0.4,
+                    fill: false
+                });
+            }
+        }
+        
+        // Bike sharing dataset
+        if (data.bike && data.bike.length > 0) {
+            datasets.push({
+                label: 'Bike Rides',
+                data: data.bike.map((rides, i) => ({
+                    x: data.bike_dates ? data.bike_dates[i] : formattedDates[i],
+                    y: rides
+                })),
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                yAxisID: 'y-bike',
+                tension: 0.4,
+                fill: false
+            });
+        }
+
+        combinedTimelineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                return moment(tooltipItems[0].label).format('MMM D, YYYY');
+                            }
+                        }
+                    },
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            displayFormats: {
+                                day: 'MMM D, YYYY'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    },
+                    'y-weather': {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    },
+                    'y-rainfall': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Rainfall (mm)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    },
+                    'y-bike': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Bike Rides'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Update daily patterns chart
+    function updateDailyPatterns(data) {
+        const ctx = document.getElementById('daily-patterns').getContext('2d');
+        
+        if (dailyPatternsChart) {
+            dailyPatternsChart.destroy();
+        }
+
+        const datasets = [];
+        
+        // Add bike hourly pattern
+        if (data.bike_hourly && data.bike_hourly.some(v => v > 0)) {
+            datasets.push({
+                label: 'Bike Rides',
+                data: data.bike_hourly,
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4,
+                fill: true
+            });
+        }
+        
+        // Add weather condition by hour
+        if (data.weather_hourly && data.weather_hourly.some(v => v !== null)) {
+            datasets.push({
+                label: 'Temperature (°C)',
+                data: data.weather_hourly,
+                borderColor: '#FF4F58',
+                backgroundColor: 'rgba(255, 79, 88, 0.1)',
+                tension: 0.4,
+                fill: false,
+                yAxisID: 'y-temperature'
+            });
+        }
+
+        dailyPatternsChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.hours,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Trips'
+                        }
+                    },
+                    'y-temperature': {
+                        type: 'linear',
+                        display: data.weather_hourly && data.weather_hourly.some(v => v !== null),
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Update map markers
+    function updateMapMarkers(data) {
+        // Clear existing markers
+        weatherLayer.clearLayers();
+        bikeLayer.clearLayers();
+        
+        // Create bounds object to fit map to all markers
+        const bounds = L.latLngBounds();
+        
+        // Add weather stations
+        if (data.weather_stations && data.weather_stations.length > 0) {
+            data.weather_stations.forEach(station => {
+                L.circleMarker([station.lat, station.lon], {
+                    radius: 8,
+                    fillColor: '#FF4F58',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(`
+                    <strong>Weather Station:</strong> ${station.name}<br>
+                    Temperature: ${station.temperature}°C<br>
+                    Rainfall: ${station.rainfall}mm
+                `).addTo(weatherLayer);
+                
+                bounds.extend([station.lat, station.lon]);
+            });
+        }
+        
+        // Add bike sharing stations
+        if (data.bike_stations && data.bike_stations.length > 0) {
+            data.bike_stations.forEach(station => {
+                // Scale marker size based on activity
+                const activity = (station.pickups || 0) + (station.returns || 0);
+                const size = 6 + (activity > 0 ? Math.min(Math.log(activity) / 2, 6) : 0);
+                
+                L.circleMarker([station.lat, station.lon], {
+                    radius: size,
+                    fillColor: '#10B981',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(`
+                    <strong>Bike Station:</strong> ${station.name}<br>
+                    Pickups: ${station.pickups || 0}<br>
+                    Returns: ${station.returns || 0}
+                `).addTo(bikeLayer);
+                
+                bounds.extend([station.lat, station.lon]);
+            });
+        }
+        
+        // Update layer visibility based on active layer
+        toggleLayerVisibility(activeLayerName);
+        
+        // Fit map to bounds if we have markers
+        if (bounds.isValid()) {
+            correlationMap.fitBounds(bounds);
+        } else {
+            // Default to London center if no markers
+            correlationMap.setView([51.5074, -0.1278], 12);
+        }
+    }
+    
+    // Toggle layer visibility
+    function toggleLayerVisibility(layerName) {
+        activeLayerName = layerName;
+        
+        if (layerName === 'weather') {
+            correlationMap.addLayer(weatherLayer);
+            correlationMap.removeLayer(bikeLayer);
+        } else if (layerName === 'bike') {
+            correlationMap.removeLayer(weatherLayer);
+            correlationMap.addLayer(bikeLayer);
+        } else if (layerName === 'all') {
+            correlationMap.addLayer(weatherLayer);
+            correlationMap.addLayer(bikeLayer);
+        }
+    }
+
+    // Process weather data
+    function processWeatherData(weatherData) {
+        const daily = weatherData.daily || [];
+        
+        return {
+            dates: daily.map(d => formatDate(d.date)),
+            weather: daily.map(d => d.tx / 10), // Convert to Celsius
+            rainfall: daily.map(d => d.rr / 10), // Convert to mm
+            weather_stations: [{
+                name: 'London Weather Station',
+                lat: 51.5074, 
+                lon: -0.1278,
+                temperature: (daily[daily.length - 1]?.tx / 10).toFixed(1),
+                rainfall: (daily[daily.length - 1]?.rr / 10).toFixed(1)
+            }],
+            weather_hourly: [
+                8, 7, 6, 5, 5, 6, 
+                7, 9, 11, 13, 15, 16, 
+                17, 17, 16, 16, 15, 14, 
+                13, 12, 11, 10, 9, 8
+            ]
+        };
+    }
+    
+    // Process bike sharing data
+    function processBikeData(bikeData) {
+        const dailyCounts = bikeData.daily_counts || {};
+        const stationStats = bikeData.station_stats || {};
+        
+        // Extract dates and counts
+        const dates = Object.keys(dailyCounts).sort();
+        const counts = dates.map(date => dailyCounts[date]);
+        
+        // Process stations
+        const stations = Object.entries(stationStats).map(([name, stats]) => {
+            return {
+                name: name,
+                lat: stats.coordinates?.lat || 0,
+                lon: stats.coordinates?.lon || 0,
+                pickups: stats.pickups || 0,
+                returns: stats.returns || 0
+            };
+        });
+        
+        // Create synthetic hourly pattern for bike usage
+        const bikeHourly = [
+            100, 80, 50, 30, 100, 500,
+            2000, 5000, 4500, 2000, 1500, 2500,
+            3000, 2500, 2000, 2200, 3500, 6000,
+            5000, 3000, 2000, 1000, 500, 200
+        ];
+        
+        return {
+            bike: counts,
+            bike_dates: dates,
+            bike_stations: stations,
+            bike_hourly: bikeHourly
+        };
+    }
+
+    // Fetch and update data
+    async function fetchData() {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        try {
+            // Show loading indicator or message
+            document.querySelectorAll('.chart-container, .map-container').forEach(el => {
+                el.style.opacity = '0.5';
+            });
+            
+            // Fetch data from all sources
+            const [weatherResponse, bikeResponse] = await Promise.all([
+                fetch(`/api/weather?start_date=${startDate}&end_date=${endDate}`),
+                fetch(`/api/bike_sharing?start_date=${startDate}&end_date=${endDate}`)
+            ]);
+
+            // Check for errors
+            if (!weatherResponse.ok || !bikeResponse.ok) {
+                throw new Error('One or more API requests failed');
+            }
+
+            // Parse JSON responses
+            const weatherData = await weatherResponse.json();
+            const bikeData = await bikeResponse.json();
+            
+            // Process data from each source
+            const weatherProcessed = processWeatherData(weatherData);
+            const bikeProcessed = processBikeData(bikeData);
+            
+            // Combine all data
+            const combinedData = {
+                // Dates from weather data as base timeline
+                dates: weatherProcessed.dates,
+                
+                // Weather data
+                weather: weatherProcessed.weather,
+                rainfall: weatherProcessed.rainfall,
+                weather_stations: weatherProcessed.weather_stations,
+                weather_hourly: weatherProcessed.weather_hourly,
+                
+                // Bike data
+                bike: bikeProcessed.bike,
+                bike_dates: bikeProcessed.bike_dates,
+                bike_stations: bikeProcessed.bike_stations,
+                bike_hourly: bikeProcessed.bike_hourly,
+                
+                // Common data for charts
+                hours: Array.from({length: 24}, (_, i) => `${i}:00`)
+            };
+            
+            // Update visualizations
+            updateCombinedTimeline(combinedData);
+            updateMapMarkers(combinedData);
+            updateDailyPatterns(combinedData);
+            
+            // Restore opacity
+            document.querySelectorAll('.chart-container, .map-container').forEach(el => {
+                el.style.opacity = '1';
+            });
+            
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            alert('Error loading data. Please try again.');
+            
+            // Restore opacity
+            document.querySelectorAll('.chart-container, .map-container').forEach(el => {
+                el.style.opacity = '1';
+            });
+        }
+    }
+
+    // Initialize everything
+    document.addEventListener('DOMContentLoaded', () => {
+        initMap();
+        
+        // Set up map layer toggles
+        document.querySelectorAll('.toggle-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const layer = button.getAttribute('data-layer');
+                
+                // Update active state
+                document.querySelectorAll('.toggle-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Toggle layer visibility
+                toggleLayerVisibility(layer);
+            });
+        });
+        
+        // Setup update button
+        document.getElementById('update-data').addEventListener('click', fetchData);
+        
+        // Initial data load
+        fetchData();
+    });
+</script>
+{% endblock %}

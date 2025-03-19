@@ -1,0 +1,1001 @@
+{% extends "base.html" %}
+
+{% block title %}London Metro Station Analysis{% endblock %}
+
+{% block extra_head %}
+    <!-- Leaflet.js for map visualization -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+    <!-- D3.js for better data visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <!-- Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        #station-map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .chart-container {
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+        .card {
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .analysis-text {
+            line-height: 1.6;
+        }
+        .year-button {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            margin: 0 0.25rem;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .year-button:hover {
+            background-color: #e5e7eb;
+            transform: translateY(-2px);
+        }
+        .year-button.active {
+            background-color: #0055A4;
+            color: white;
+            border-color: #0055A4;
+        }
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .top-station-card {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            background-color: #f9fafb;
+            transition: all 0.2s ease;
+        }
+        .top-station-card:hover {
+            background-color: #f3f4f6;
+            transform: translateX(5px);
+        }
+        .station-number {
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #0055A4;
+            color: white;
+            font-weight: bold;
+            border-radius: 50%;
+            margin-right: 1rem;
+        }
+        .station-bar {
+            height: 0.75rem;
+            background-color: #0055A4;
+            border-radius: 1rem;
+            margin-top: 0.25rem;
+        }
+        .yearly-top-stations {
+            display: none; /* Hide all by default */
+        }
+        .yearly-top-stations.active {
+            display: grid; /* Show active one */
+        }
+        .year-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .year-label {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            font-weight: 600;
+            border-radius: 0.375rem;
+            background-color: #0055A4;
+            color: white;
+            font-size: 0.875rem;
+        }
+        /* Position history styling */
+        .position-history {
+            margin-top: 0.25rem;
+        }
+        .position-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem;
+            height: 1.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 50%;
+            background-color: #e5e7eb;
+            color: #4b5563;
+            margin-right: 0.25rem;
+            transition: all 0.2s ease;
+        }
+        .position-badge.current {
+            background-color: #0055A4;
+            color: white;
+            transform: scale(1.2);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .position-badge:hover {
+            transform: scale(1.2);
+            cursor: help;
+        }
+        .position-badge.up {
+            background-color: #10B981; /* Green for improved position */
+        }
+        .position-badge.down {
+            background-color: #EF4444; /* Red for worse position */
+        }
+        .position-badge.same {
+            background-color: #F59E0B; /* Yellow for same position */
+        }
+        /* Sticky year buttons */
+        .sticky-buttons-container {
+            position: relative;
+            z-index: 10;
+        }
+        
+        .sticky-buttons {
+            background-color: white;
+            padding: 1rem 0;
+            transition: all 0.3s ease;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .sticky-buttons.fixed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 0.5rem 0;
+        }
+        
+        .sticky-buttons.hidden {
+            transform: translateY(-100%);
+        }
+        
+        .normalize-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+            font-style: italic;
+            margin-top: 0.25rem;
+            display: block;
+            text-align: right;
+        }
+        /* Toggle switch styling */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+            margin: 0 10px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #0055A4;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+        .map-controls {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .zone-filter {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .zone-button {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 500;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .zone-button:hover {
+            transform: translateY(-2px);
+        }
+        .zone-button.active {
+            background-color: white;
+            border-color: currentColor;
+        }
+        .zone-button.zone-1 { color: #0055A4; }
+        .zone-button.zone-2 { color: #60A5FA; }
+        .zone-button.zone-3 { color: #10B981; }
+        .zone-button.zone-4 { color: #F59E0B; }
+        .zone-button.all { color: #374151; }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 1rem;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        /* Year selector sticky styles */
+        .year-selector {
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        .year-selector.sticky {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 0.75rem 0;
+            margin: 0;
+            border-radius: 0;
+        }
+        
+        .year-selector.sticky h2 {
+            display: none;
+        }
+        
+        .year-selector-placeholder {
+            display: none;
+        }
+        
+        /* Mode selector styles */
+        .mode-button {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            margin: 0 0.25rem;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .mode-button:hover {
+            background-color: #e5e7eb;
+            transform: translateY(-2px);
+        }
+        
+        .mode-button.active {
+            background-color: #0055A4;
+            color: white;
+            border-color: #0055A4;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-gradient-to-b from-blue-50 to-white py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h1 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+                <span class="block text-primary">London Metro Station Analysis</span>
+            </h1>
+            <p class="mt-3 max-w-2xl mx-auto text-xl text-gray-500 sm:mt-4">
+                Explore metro station usage patterns and geographical distribution across London from 2019 to 2023
+            </p>
+        </div>
+
+        <!-- Global Year Selector - Will be sticky -->
+        <div id="year-selector" class="bg-white rounded-lg shadow-lg p-6 mb-10 year-selector">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Select Year</h2>
+            <div class="btn-group">
+                <button class="year-button" data-year="2019">2019</button>
+                <button class="year-button" data-year="2020">2020</button>
+                <button class="year-button" data-year="2021">2021</button>
+                <button class="year-button" data-year="2022">2022</button>
+                <button class="year-button active" data-year="2023">2023</button>
+                <button class="year-button" data-year="total">All Years</button>
+            </div>
+        </div>
+        
+        <!-- Placeholder to prevent content jump when selector becomes sticky -->
+        <div id="year-selector-placeholder" class="year-selector-placeholder"></div>
+
+        <!-- Interactive Map Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Interactive Station Map</h2>
+            
+            <!-- Map controls -->
+            <div class="map-controls">
+                <div class="zone-filter">
+                    <button class="zone-button all active" data-zone="all">All Zones</button>
+                    <button class="zone-button zone-1" data-zone="1">Zone 1</button>
+                    <button class="zone-button zone-2" data-zone="2">Zone 2</button>
+                    <button class="zone-button zone-3" data-zone="3">Zone 3</button>
+                    <button class="zone-button zone-4" data-zone="4">Zone 4+</button>
+                </div>
+                
+                <!-- Updated visualization mode buttons -->
+                <div class="btn-group">
+                    <button class="mode-button active" data-mode="standard">Standard View</button>
+                    <button class="mode-button" data-mode="size">Size Heatmap</button>
+                </div>
+            </div>
+            
+            <div id="station-map" class="mb-6"></div>
+            
+        </div>
+
+        <!-- Top Stations Section -->
+        <div id="top-stations-section" class="bg-white rounded-lg shadow-lg p-6 mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Top 10 Busiest Stations</h2>
+            
+            <!-- Yearly top stations sections -->
+            <div id="top-stations-container">
+                <!-- Template for each year's top stations container -->
+                <!-- Will be populated via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Yearly Comparison Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Yearly Comparison (2019-2023)</h2>
+            <div class="chart-container">
+                <canvas id="yearly-comparison-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-10">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Analysis Insights</h2>
+            <div class="analysis-text text-gray-700">
+                <p class="mb-3">
+                    The data visualizations above illustrate several key trends in London's metro station usage from 2019 to 2023:
+                </p>
+                <ul class="list-disc ml-6 mb-4 space-y-2">
+                    <li><strong>Impact of COVID-19:</strong> A significant drop in passenger numbers is visible in 2020 due to the pandemic, with gradual recovery in subsequent years.</li>
+                </ul>
+                <p>
+                    These insights can help transport planners, urban developers, and policymakers make informed decisions about resource allocation, service improvements, and future development.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Station filters and map state
+    const mapState = {
+        currentYear: '2023',
+        selectedZones: ['all'],
+        visualizationMode: 'standard',  // 'standard', 'size'
+        stationsData: null,
+    };
+    
+    // Load station data
+    async function loadStationData(year = '2023') {
+        try {
+            // Load stations data
+            const stationsResponse = await fetch(`/api/metro/stations?year=${year}`);
+            const stationsData = await stationsResponse.json();
+            
+            // Store the data for later use
+            mapState.stationsData = stationsData;
+            mapState.currentYear = year;
+            
+            // Initialize the map with station data
+            initMap(stationsData);
+            
+            // Load yearly usage data
+            const usageResponse = await fetch('/api/metro/yearly_usage');
+            const usageData = await usageResponse.json();
+            
+            // Create the charts
+            createYearlyComparisonChart(usageData);
+            
+            // Generate all top stations containers
+            generateAllTopStations(usageData);
+            
+            // Update active button and show the current year's data
+            updateActiveYearButton(year);
+            showYearlyTopStations(year);
+        } catch (error) {
+            console.error('Error loading data:', error);
+        }
+    }
+    
+    // Initialize the map
+    function initMap(stationsData) {
+        // Check if map is already initialized
+        if (window.stationMap) {
+            window.stationMap.remove();
+        }
+        
+        window.stationMap = L.map('station-map').setView([51.505, -0.09], 11);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(window.stationMap);
+        
+        // Create a layer group to hold all markers
+        window.stationMarkers = L.layerGroup().addTo(window.stationMap);
+        
+        // Add station markers
+        updateMapMarkers(stationsData);
+    }
+    
+    // Get total usage for a station across all years
+    function getStationTotalUsage(station) {
+        if (!station.usage) return 0;
+        
+        return Object.values(station.usage).reduce((total, yearly) => total + yearly, 0);
+    }
+    
+    
+    // Get maximum usage across all stations for the current year
+    function getMaxUsage(stations, year) {
+        let maxUsage = 0;
+        Object.values(stations).forEach(station => {
+            let usage = 0;
+            
+            if (year === 'total') {
+                usage = getStationTotalUsage(station);
+            } else if (year in station.usage) {
+                usage = station.usage[year];
+            }
+            
+            if (usage > maxUsage) {
+                maxUsage = usage;
+            }
+        });
+        return maxUsage;
+    }
+    
+    // Update map markers based on current filters and visualization mode
+    function updateMapMarkers(stationsData = mapState.stationsData) {
+        if (!stationsData || !window.stationMap) return;
+        
+        // Clear existing markers
+        window.stationMarkers.clearLayers();
+        
+        const stations = stationsData.stations;
+        const year = mapState.currentYear;
+        
+        
+        
+        // For other visualization modes, use the existing approach
+        // Calculate maximum usage for scaling
+        const maxUsage = getMaxUsage(stations, year);
+        
+        // Add markers for each station based on filters
+        Object.keys(stations).forEach(stationKey => {
+            const station = stations[stationKey];
+            
+            // Skip if zone filter is active and this station's zone doesn't match
+            if (!mapState.selectedZones.includes('all') && 
+                !mapState.selectedZones.includes(station.zone.toString())) {
+                return;
+            }
+            
+            // Get usage based on selected year
+            let usage = 0;
+            if (year === 'total') {
+                usage = getStationTotalUsage(station);
+            } else if (year in station.usage) {
+                usage = station.usage[year];
+            }
+            
+            // Calculate usage ratio for visualization
+            const usageRatio = maxUsage > 0 ? usage / maxUsage : 0;
+            
+            // Configure marker based on visualization mode
+            let markerColor, markerSize, markerOpacity;
+            
+            // Determine zone color (for standard view)
+            const zoneColors = {
+                1: '#0055A4', // primary color
+                2: '#60A5FA', // blue-400
+                3: '#10B981', // green-500
+                4: '#F59E0B'  // yellow-500 (for zone 4+)
+            };
+            const defaultZoneColor = '#F59E0B';
+            
+            switch(mapState.visualizationMode) {
+                case 'standard':
+                    markerColor = zoneColors[station.zone] || defaultZoneColor;
+                    markerSize = 8;
+                    markerOpacity = 0.8;
+                    break;
+                    
+                case 'size':
+                    markerColor = zoneColors[station.zone] || defaultZoneColor;
+                    // Scale from 4 to 20 based on usage
+                    markerSize = 4 + (usageRatio * 16);
+                    markerOpacity = 0.5 + (usageRatio * 0.5);
+                    break;
+
+            }
+            
+            // Create circle marker
+            const marker = L.circleMarker([station.position.lat, station.position.lon], {
+                radius: markerSize,
+                fillColor: markerColor,
+                color: '#fff',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: markerOpacity
+            }).addTo(window.stationMarkers);
+            
+            // Format usage for display
+            let usageDisplay = 'No data';
+            if (usage > 0) {
+                usageDisplay = usage >= 1000000 
+                    ? `${(usage / 1000000).toFixed(1)}M` 
+                    : `${(usage / 1000).toFixed(0)}K`;
+            }
+            
+            // Add popup with station info
+            marker.bindPopup(`
+                <div class="text-center">
+                    <h3 class="font-bold">${station.title}</h3>
+                    <p>Zone ${station.zone}</p>
+                    <p class="font-medium">${year === 'total' ? 'Total' : year} Usage: ${usageDisplay} entries/exits</p>
+                </div>
+            `);
+        });
+    }
+    
+    // Handle sticky year selector
+    function setupStickyYearSelector() {
+        const yearSelector = document.getElementById('year-selector');
+        const placeholder = document.getElementById('year-selector-placeholder');
+        let selectorHeight = yearSelector.offsetHeight;
+        let selectorTop = yearSelector.offsetTop;
+        
+        function updateStickyState() {
+            const scrollY = window.scrollY;
+            
+            if (scrollY > selectorTop) {
+                yearSelector.classList.add('sticky');
+                
+                // Only update placeholder height once when becoming sticky
+                if (!placeholder.style.height) {
+                    placeholder.style.height = selectorHeight + 'px';
+                    placeholder.style.display = 'block';
+                }
+            } else {
+                yearSelector.classList.remove('sticky');
+                placeholder.style.height = '';
+                placeholder.style.display = 'none';
+            }
+        }
+        
+        // Set up scroll listener
+        window.addEventListener('scroll', updateStickyState);
+        
+        // Set up resize listener to recalculate heights if needed
+        window.addEventListener('resize', () => {
+            // Reset sticky state to measure correct height
+            yearSelector.classList.remove('sticky');
+            placeholder.style.height = '';
+            placeholder.style.display = 'none';
+            
+            // Re-measure after DOM updates
+            setTimeout(() => {
+                selectorHeight = yearSelector.offsetHeight;
+                selectorTop = yearSelector.offsetTop;
+                updateStickyState();
+            }, 100);
+        });
+        
+        // Initial check
+        updateStickyState();
+    }
+    
+    
+    // Initialize event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+        // Set up visualization mode buttons
+        document.querySelectorAll('.mode-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const mode = button.getAttribute('data-mode');
+                
+                // Update active state
+                document.querySelectorAll('.mode-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Update map state
+                mapState.visualizationMode = mode;
+                updateMapMarkers();
+            });
+        });
+        
+        // Set up zone filter buttons
+        document.querySelectorAll('.zone-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const zone = button.getAttribute('data-zone');
+                
+                // Handle the "All Zones" button
+                if (zone === 'all') {
+                    mapState.selectedZones = ['all'];
+                    document.querySelectorAll('.zone-button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    button.classList.add('active');
+                } else {
+                    // Remove "all" from selected zones
+                    mapState.selectedZones = mapState.selectedZones.filter(z => z !== 'all');
+                    document.querySelector('.zone-button.all').classList.remove('active');
+                    
+                    // Toggle this zone
+                    if (mapState.selectedZones.includes(zone)) {
+                        mapState.selectedZones = mapState.selectedZones.filter(z => z !== zone);
+                        button.classList.remove('active');
+                    } else {
+                        mapState.selectedZones.push(zone);
+                        button.classList.add('active');
+                    }
+                    
+                    // If no zones are selected, activate the "All Zones" button
+                    if (mapState.selectedZones.length === 0) {
+                        mapState.selectedZones = ['all'];
+                        document.querySelector('.zone-button.all').classList.add('active');
+                    }
+                }
+                
+                // Update map
+                updateMapMarkers();
+            });
+        });
+        
+        // Set up year buttons
+        document.querySelectorAll('.year-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const year = button.getAttribute('data-year');
+                
+                // Update map state
+                mapState.currentYear = year;
+                
+                // Update map
+                updateMapMarkers();
+                
+                // Update top stations list
+                updateActiveYearButton(year);
+                showYearlyTopStations(year);
+            });
+        });
+        
+        // Set up sticky year selector
+        setupStickyYearSelector();
+        
+        // Load initial data
+        loadStationData('2023');
+        
+    });
+    // Generate all top stations sections for each year
+    function generateAllTopStations(data) {
+        const container = document.getElementById('top-stations-container');
+        container.innerHTML = ''; // Clear existing content
+        
+        // Get all years including 'total'
+        const years = [...data.years, 'total'];
+        
+        // Process each year
+        years.forEach(year => {
+            // Get this year's top stations data
+            const topStations = data.top_stations_by_year[year];
+            
+            // Create a container for this year's data
+            const yearSection = document.createElement('div');
+            yearSection.className = `yearly-top-stations ${year === '2023' ? 'active' : ''}`;
+            yearSection.id = `top-stations-${year}`;
+            
+            // Year title with special handling for 'total'
+            const yearTitle = year === 'total' ? 'Across All Years (2019-2023)' : `Year ${year}`;
+            
+            // Create layout for the list
+            yearSection.innerHTML = `
+                <div class="bg-gray-50 p-4 rounded-lg shadow-sm">
+                    <div id="top-stations-list-${year}"></div>
+                </div>
+            `;
+            
+            // Add to main container
+            container.appendChild(yearSection);
+            
+            // Create enhanced list for this year
+            createTopStationsEnhancedList(topStations, year, data);
+        });
+    }
+    
+    // Create enhanced top stations list with position changes
+    function createTopStationsEnhancedList(stationsData, year, allData) {
+        const listId = `top-stations-list-${year}`;
+        const listContainer = document.getElementById(listId);
+        
+        // Create array of [station, usage] pairs for sorting
+        const stationUsagePairs = Object.entries(stationsData).map(([station, usage]) => ({
+            station,
+            usage
+        }));
+        
+        // Sort by usage in descending order
+        stationUsagePairs.sort((a, b) => b.usage - a.usage);
+        
+        // Find the maximum value for scaling
+        const maxUsage = Math.max(...stationUsagePairs.map(pair => pair.usage));
+        
+        // Set a consistent scale for all years (90 million maximum)
+        const fixedMaxScale = (year !== 'total') ? 90000000 : maxUsage;
+        
+        // Create a list item for each station
+        stationUsagePairs.forEach((pair, index) => {
+            const station = pair.station;
+            const usage = pair.usage;
+            
+            // Calculate percentage based on fixed scale (90M)
+            const percentage = (usage / fixedMaxScale) * 100;
+            
+            // Format the usage numbers (using original values)
+            const formattedUsage = (usage >= 1000000) 
+                ? `${(usage / 1000000).toFixed(1)}M` 
+                : `${(usage / 1000).toFixed(0)}K`;
+            
+            const listItem = document.createElement('div');
+            listItem.className = 'top-station-card';
+            
+            // Create position history if not looking at total
+            let positionHistory = '';
+            
+            if (year !== 'total') {
+                const years = allData.years;
+                const positionTracker = getStationPositionHistory(station, allData);
+                
+                // Only show position history if we have data for multiple years
+                if (years.length > 1) {
+                    positionHistory = `
+                        <div class="position-history flex items-center space-x-1 mt-1">
+                            ${years.map(y => {
+                                const position = positionTracker[y] || '-';
+                                const isCurrentYear = y === year;
+                                return `<span class="position-badge ${isCurrentYear ? 'current' : ''}" 
+                                    title="${y}: #${position}">${position}</span>`;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+            }
+            
+            listItem.innerHTML = `
+                <div class="station-number">${index + 1}</div>
+                <div class="flex-grow">
+                    <div class="flex justify-between">
+                        <div>
+                            <strong>${station}</strong>
+                            ${positionHistory}
+                        </div>
+                        <span class="text-primary font-medium">${formattedUsage}</span>
+                    </div>
+                    <div class="station-bar" style="width: ${percentage}%"></div>
+                </div>
+            `;
+            
+            listContainer.appendChild(listItem);
+        });
+    }
+    
+    // Get position history of a station across all years
+    function getStationPositionHistory(station, data) {
+        const years = data.years;
+        const positionTracker = {};
+        
+        // For each year, find this station's position
+        years.forEach(year => {
+            const yearData = data.top_stations_by_year[year];
+            
+            // Create sorted array of [station, usage] pairs
+            const sortedStations = Object.entries(yearData)
+                .sort((a, b) => b[1] - a[1])
+                .map(entry => entry[0]);
+            
+            // Find position in sorted array
+            const position = sortedStations.indexOf(station);
+            
+            // Store position (add 1 to convert from 0-indexed to 1-indexed)
+            positionTracker[year] = position >= 0 ? position + 1 : null;
+        });
+        
+        return positionTracker;
+    }
+    
+    // Create yearly comparison chart with percentage change from 2019
+    function createYearlyComparisonChart(data) {
+        const years = data.years;
+        // Convert to millions
+        const inoutMillions = data.total_inout.map(value => value / 1000000);
+        
+        // Calculate percentage change from 2019
+        const inout2019 = inoutMillions[0];
+        const percentChange = inoutMillions.map(value => ((value - inout2019) / inout2019) * 100);
+        
+        const canvas = document.getElementById('yearly-comparison-chart');
+        
+        // Destroy existing chart if it exists
+        if (window.yearlyComparisonChart) {
+            window.yearlyComparisonChart.destroy();
+        }
+        
+        window.yearlyComparisonChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: years,
+                datasets: [
+                    {
+                        label: 'Total Passengers (Millions)',
+                        data: inoutMillions,
+                        backgroundColor: '#0055A4',
+                        yAxisID: 'y',
+                        order: 2
+                    },
+                    {
+                        label: '% Change from 2019',
+                        data: percentChange,
+                        type: 'line',
+                        borderColor: '#00AEEF',
+                        backgroundColor: 'rgba(0, 174, 239, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        yAxisID: 'y1',
+                        order: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Total Passengers (Millions)'
+                        },
+                        grid: {
+                            color: '#f0f0f0'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Percent Change from 2019 (%)',
+                            color: '#00AEEF'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            color: '#00AEEF'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+    
+    // Update active button state
+    function updateActiveYearButton(selectedYear) {
+        document.querySelectorAll('.year-button').forEach(button => {
+            const year = button.getAttribute('data-year');
+            if (year === selectedYear.toString()) {
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+    }
+    
+    // Show the top stations for the selected year
+    function showYearlyTopStations(selectedYear) {
+        // Hide all year sections
+        document.querySelectorAll('.yearly-top-stations').forEach(section => {
+            section.classList.remove('active');
+        });
+        
+        // Show the selected year's section
+        const selectedSection = document.getElementById(`top-stations-${selectedYear}`);
+        if (selectedSection) {
+            selectedSection.classList.add('active');
+        }
+    }
+    
+    // Event listener for year buttons - Updated to also update map
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.year-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const year = button.getAttribute('data-year');
+                
+                // If we're just changing the year, we can reuse the existing data
+                mapState.currentYear = year;
+                
+                // Update map to reflect new year
+                updateMapMarkers();
+                
+                // Update top stations list
+                updateActiveYearButton(year);
+                showYearlyTopStations(year);
+            });
+        });
+        
+        // Load initial data
+        loadStationData('2023');
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}London Bike Sharing Analysis{% endblock %}
+
+{% block extra_head %}
+    <!-- Leaflet.js for map visualization -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+    <!-- D3.js for better data visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <!-- Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        #bike-map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .chart-container {
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #0055A4 0%, #00AEEF 100%);
+            color: white;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0.5rem 0;
+        }
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        .date-picker {
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            margin-right: 1rem;
+        }
+        .btn-primary {
+            background-color: #0055A4;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary:hover {
+            background-color: #004483;
+        }
+        .station-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding-right: 1rem;
+        }
+        .station-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            background-color: #f9fafb;
+            transition: transform 0.2s ease;
+        }
+        .station-item:hover {
+            transform: translateX(5px);
+            background-color: #f3f4f6;
+        }
+        .bike-model-pill {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            margin: 0.25rem;
+            background-color: #0055A4;
+            color: white;
+        }
+        /* Add map controls styling */
+        .map-controls {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+        .btn-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .mode-button {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .mode-button:hover {
+            background-color: #e5e7eb;
+            transform: translateY(-2px);
+        }
+        .mode-button.active {
+            background-color: #0055A4;
+            color: white;
+            border-color: #0055A4;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="bg-gradient-to-b from-blue-50 to-white py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+            <h1 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+                <span class="block text-primary">London Bike Sharing Analysis</span>
+            </h1>
+            <p class="mt-3 max-w-2xl mx-auto text-xl text-gray-500 sm:mt-4">
+                Explore bike sharing patterns and station usage across London
+            </p>
+        </div>
+
+        <!-- Date Range Selector -->
+        <div class="card mb-8">
+            <div class="flex items-center justify-center space-x-4 mb-4">
+                <input type="date" id="start-date" class="date-picker" value="2023-01-01">
+                <input type="date" id="end-date" class="date-picker" value="2025-01-31">
+                <button id="update-data" class="btn-primary">Update Data</button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="stat-card">
+                <div class="stat-label">Total Rides</div>
+                <div id="total-rides" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Average Ride Duration</div>
+                <div id="avg-duration" class="stat-value">0m 0s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Bike Models</div>
+                <div id="bike-models-container" class="flex flex-wrap justify-center gap-2 mt-2">
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Section -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Bike Station Activity Map</h2>
+            <!-- Add map controls -->
+            <div class="map-controls mb-4">
+                <div class="btn-group">
+                    <button class="mode-button active" data-mode="standard">Standard View</button>
+                    <button class="mode-button" data-mode="size">Size Heatmap</button>
+                </div>
+            </div>
+            <div id="bike-map"></div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 my-8">
+            <!-- Top Pickup Stations -->
+            <div class="card">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Top Pickup Stations</h2>
+                <div class="chart-container">
+                    <canvas id="top-pickups-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Return Stations -->
+            <div class="card">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Top Return Stations</h2>
+                <div class="chart-container">
+                    <canvas id="top-returns-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Journey Timeline -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Journey Timeline</h2>
+            <div class="chart-container">
+                <canvas id="journey-timeline"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let bikeMap;
+    let markers = L.layerGroup();
+    let topPickupsChart = null;
+    let topReturnsChart = null;
+    let journeyTimelineChart = null;
+    let currentMapMode = 'standard'; // Add map mode state
+
+    // Initialize the map
+    function initMap() {
+        if (bikeMap) {
+            bikeMap.remove();
+        }
+
+        bikeMap = L.map('bike-map').setView([51.5074, -0.1278], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(bikeMap);
+
+        markers = L.layerGroup().addTo(bikeMap);
+    }
+
+    // Update statistics cards
+    function updateStats(data) {
+        document.getElementById('total-rides').textContent = data.summary.total_rides.toLocaleString();
+        document.getElementById('avg-duration').textContent = data.summary.avg_duration_formatted;
+        
+        // Update bike models
+        const modelsContainer = document.getElementById('bike-models-container');
+        modelsContainer.innerHTML = '';
+        Object.entries(data.summary.bike_models).forEach(([model, count]) => {
+            const pill = document.createElement('div');
+            pill.className = 'bike-model-pill';
+            pill.textContent = `${model}: ${count}`;
+            modelsContainer.appendChild(pill);
+        });
+    }
+
+    // Create station markers on the map
+    function updateMapMarkers(data) {
+        markers.clearLayers();
+
+        // Create a bounds object to track all marker positions
+        const bounds = L.latLngBounds([]);
+
+        // Find maximum activity for scaling
+        let maxActivity = 0;
+        Object.values(data.station_stats).forEach(stats => {
+            const totalActivity = stats.pickups + stats.returns;
+            if (totalActivity > maxActivity) {
+                maxActivity = totalActivity;
+            }
+        });
+
+        // Process all stations from station_stats
+        Object.entries(data.station_stats).forEach(([name, stats]) => {
+            const totalActivity = stats.pickups + stats.returns;
+            
+            // Configure marker based on visualization mode
+            let markerSize, markerOpacity;
+            
+            switch(currentMapMode) {
+                case 'standard':
+                    markerSize = 8;
+                    markerOpacity = 0.8;
+                    break;
+                    
+                case 'size':
+                    // Scale from 4 to 20 based on activity
+                    const activityRatio = totalActivity / maxActivity;
+                    markerSize = 4 + (activityRatio * 16);
+                    markerOpacity = 0.5 + (activityRatio * 0.5);
+                    break;
+            }
+            
+            const marker = L.circleMarker([stats.coordinates.lat, stats.coordinates.lon], {
+                radius: markerSize,
+                fillColor: '#0055A4',
+                color: '#fff',
+                weight: 1,
+                opacity: 1,
+                fillOpacity: markerOpacity
+            }).bindPopup(`
+                <strong>${name}</strong><br>
+                Pickups: ${stats.pickups}<br>
+                Returns: ${stats.returns}
+            `);
+            
+            markers.addLayer(marker);
+            bounds.extend([stats.coordinates.lat, stats.coordinates.lon]);
+        });
+
+        // Adjust map bounds to show all markers
+        if (bounds.isValid()) {
+            bikeMap.fitBounds(bounds);
+        } else {
+            // If no markers, center on London
+            bikeMap.setView([51.5074, -0.1278], 12);
+        }
+    }
+
+    // Update station charts
+    function updateStationCharts(data) {
+        // Destroy existing charts if they exist
+        if (topPickupsChart) {
+            topPickupsChart.destroy();
+        }
+        if (topReturnsChart) {
+            topReturnsChart.destroy();
+        }
+
+        // Update top pickup stations chart
+        const pickupLabels = data.top_stations.pickups.map(station => station.name);
+        const pickupData = data.top_stations.pickups.map(station => station.pickups);
+        
+        topPickupsChart = new Chart(document.getElementById('top-pickups-chart'), {
+            type: 'bar',
+            data: {
+                labels: pickupLabels,
+                datasets: [{
+                    label: 'Number of Pickups',
+                    data: pickupData,
+                    backgroundColor: 'rgba(0, 85, 164, 0.8)',
+                    borderColor: 'rgba(0, 85, 164, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Update top return stations chart
+        const returnLabels = data.top_stations.returns.map(station => station.name);
+        const returnData = data.top_stations.returns.map(station => station.returns);
+        
+        topReturnsChart = new Chart(document.getElementById('top-returns-chart'), {
+            type: 'bar',
+            data: {
+                labels: returnLabels,
+                datasets: [{
+                    label: 'Number of Returns',
+                    data: returnData,
+                    backgroundColor: 'rgba(0, 174, 239, 0.8)',
+                    borderColor: 'rgba(0, 174, 239, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Update journey timeline
+    function updateJourneyTimeline(data) {
+        // Destroy existing chart if it exists
+        if (journeyTimelineChart) {
+            journeyTimelineChart.destroy();
+        }
+
+        const dates = Object.keys(data.daily_counts).sort();
+        const counts = dates.map(date => data.daily_counts[date]);
+        
+        journeyTimelineChart = new Chart(document.getElementById('journey-timeline'), {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Daily Rides',
+                    data: counts,
+                    borderColor: 'rgba(0, 85, 164, 1)',
+                    backgroundColor: 'rgba(0, 85, 164, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Fetch and update data
+    async function fetchData() {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        try {
+            const response = await fetch(`/api/bike_sharing?start_date=${startDate}&end_date=${endDate}`);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const data = await response.json();
+            
+            updateStats(data);
+            updateMapMarkers(data);
+            updateStationCharts(data);
+            updateJourneyTimeline(data);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            alert('Error loading bike sharing data. Please try again.');
+        }
+    }
+
+    // Initialize everything
+    document.addEventListener('DOMContentLoaded', () => {
+        initMap();
+        
+        // Set up map mode buttons
+        document.querySelectorAll('.mode-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const mode = button.getAttribute('data-mode');
+                
+                // Update active state
+                document.querySelectorAll('.mode-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Update map mode
+                currentMapMode = mode;
+                
+                // Refresh data to update markers
+                fetchData();
+            });
+        });
+        
+        document.getElementById('update-data').addEventListener('click', fetchData);
+        fetchData(); // Initial data load
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+Flask
+Pandas
+NumPy
+Matplotlib
+Seaborn
+Jinja2
+requests
+scikit-learn
+plotly
+flask-cors
