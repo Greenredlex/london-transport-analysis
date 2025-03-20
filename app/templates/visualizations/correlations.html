@@ -106,6 +106,7 @@
         }
         .weather-color { background-color: #FF4F58; }
         .bike-color { background-color: #10B981; }
+        .metro-color { background-color: #0055A4; }
         .toggle-container {
             display: flex;
             gap: 1rem;
@@ -134,6 +135,28 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             z-index: 1000;
         }
+                /* Mode selector styles */
+        .mode-button {
+            background-color: #f3f4f6;
+            color: #374151;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            margin: 0 0.25rem;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .mode-button:hover {
+            background-color: #e5e7eb;
+            transform: translateY(-2px);
+        }
+        
+        .mode-button.active {
+            background-color: #0055A4;
+            color: white;
+            border-color: #0055A4;
+        }
     </style>
 {% endblock %}
 
@@ -153,6 +176,7 @@
         <div class="data-availability">
             <h3>Data Availability</h3>
             <ul>
+                <li>Metro Availability: 2019-2023</li>
                 <li>Weather Data: 2019-2023</li>
                 <li>Bike Data: 2023-2024</li>
                 <li>Complete analysis is available for 2023 when both datasets overlap</li>
@@ -180,17 +204,22 @@
         <div class="card">
             <h2 class="text-2xl font-bold text-gray-800 mb-4">Geographic Distribution</h2>
             <div class="toggle-container">
-                <button class="toggle-button active" data-layer="weather">Weather Stations</button>
                 <button class="toggle-button" data-layer="bike">Bike Stations</button>
-                <button class="toggle-button" data-layer="all">All Stations</button>
+                <button class="toggle-button" data-layer="metro">Metro Stations</button>
+                <button class="toggle-button active" data-layer="all">All Stations</button>
+                <!-- Updated visualization mode buttons -->
+                <div class="btn-group" style="float: right; margin-left: auto;">
+                    <button class="mode-button active" data-mode="standard">Standard View</button>
+                    <button class="mode-button" data-mode="size">Size Heatmap</button>
+                </div>
             </div>
             <div class="map-container">
                 <div id="correlation-map"></div>
             </div>
             <div class="legend">
                 <div class="legend-item">
-                    <div class="legend-color weather-color"></div>
-                    <span>Weather Stations</span>
+                    <div class="legend-color metro-color"></div>
+                    <span>Metro Stations</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color bike-color"></div>
@@ -199,23 +228,22 @@
             </div>
         </div>
 
-        <!-- Daily Patterns -->
-        <div class="card">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Daily Patterns</h2>
-            <div class="chart-container">
-                <canvas id="daily-patterns"></canvas>
-            </div>
-        </div>
     </div>
 </div>
 
 <script>
     let correlationMap;
-    let weatherLayer = L.layerGroup();
     let bikeLayer = L.layerGroup();
+    let metroLayer = L.layerGroup();
     let combinedTimelineChart = null;
-    let dailyPatternsChart = null;
     let activeLayerName = 'weather';
+
+    // Add map state object
+    const mapState = {
+        currentYear: '2023',
+        selectedZones: ['all'],
+        visualizationMode: 'standard'  // 'standard' or 'size'
+    };
 
     // Initialize the map
     function initMap() {
@@ -223,14 +251,39 @@
             correlationMap.remove();
         }
 
-        correlationMap = L.map('correlation-map').setView([51.5074, -0.1278], 12);
+        correlationMap = L.map('correlation-map').setView([51.505, -0.09], 11);
+        
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(correlationMap);
-
+        
         // Create separate layers for each data type
-        weatherLayer = L.layerGroup().addTo(correlationMap);
         bikeLayer = L.layerGroup().addTo(correlationMap);
+        metroLayer = L.layerGroup().addTo(correlationMap);
+
+        // Add visualization mode controls
+        const mapControls = document.createElement('div');
+        mapControls.className = 'map-controls';
+        document.querySelector('.map-container').insertBefore(mapControls, document.getElementById('correlation-map'));
+
+        // Set up visualization mode buttons
+        document.querySelectorAll('.mode-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const mode = button.getAttribute('data-mode');
+                
+                // Update active state
+                document.querySelectorAll('.mode-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                button.classList.add('active');
+                
+                // Update map state
+                mapState.visualizationMode = mode;
+                
+                // Refresh data to update markers
+                fetchData();
+            });
+        });
     }
 
     // Format date (YYYYMMDD to YYYY-MM-DD)
@@ -382,118 +435,51 @@
         });
     }
 
-    // Update daily patterns chart
-    function updateDailyPatterns(data) {
-        const ctx = document.getElementById('daily-patterns').getContext('2d');
-        
-        if (dailyPatternsChart) {
-            dailyPatternsChart.destroy();
-        }
-
-        const datasets = [];
-        
-        // Add bike hourly pattern
-        if (data.bike_hourly && data.bike_hourly.some(v => v > 0)) {
-            datasets.push({
-                label: 'Bike Rides',
-                data: data.bike_hourly,
-                borderColor: '#10B981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                tension: 0.4,
-                fill: true
-            });
-        }
-        
-        // Add weather condition by hour
-        if (data.weather_hourly && data.weather_hourly.some(v => v !== null)) {
-            datasets.push({
-                label: 'Temperature (°C)',
-                data: data.weather_hourly,
-                borderColor: '#FF4F58',
-                backgroundColor: 'rgba(255, 79, 88, 0.1)',
-                tension: 0.4,
-                fill: false,
-                yAxisID: 'y-temperature'
-            });
-        }
-
-        dailyPatternsChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.hours,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Number of Trips'
-                        }
-                    },
-                    'y-temperature': {
-                        type: 'linear',
-                        display: data.weather_hourly && data.weather_hourly.some(v => v !== null),
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: 'Temperature (°C)'
-                        },
-                        grid: {
-                            drawOnChartArea: false
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Update map markers
+    // Update map markers based on current filters and visualization mode
     function updateMapMarkers(data) {
         // Clear existing markers
-        weatherLayer.clearLayers();
         bikeLayer.clearLayers();
+        metroLayer.clearLayers();
         
         // Create bounds object to fit map to all markers
         const bounds = L.latLngBounds();
         
-        // Add weather stations
-        if (data.weather_stations && data.weather_stations.length > 0) {
-            data.weather_stations.forEach(station => {
-                L.circleMarker([station.lat, station.lon], {
-                    radius: 8,
-                    fillColor: '#FF4F58',
-                    color: '#fff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                }).bindPopup(`
-                    <strong>Weather Station:</strong> ${station.name}<br>
-                    Temperature: ${station.temperature}°C<br>
-                    Rainfall: ${station.rainfall}mm
-                `).addTo(weatherLayer);
-                
-                bounds.extend([station.lat, station.lon]);
-            });
-        }
-        
         // Add bike sharing stations
         if (data.bike_stations && data.bike_stations.length > 0) {
+            // Find maximum activity for bike stations
+            let maxBikeActivity = 0;
             data.bike_stations.forEach(station => {
-                // Scale marker size based on activity
                 const activity = (station.pickups || 0) + (station.returns || 0);
-                const size = 6 + (activity > 0 ? Math.min(Math.log(activity) / 2, 6) : 0);
+                if (activity > maxBikeActivity) maxBikeActivity = activity;
+            });
+
+            data.bike_stations.forEach(station => {
+                const activity = (station.pickups || 0) + (station.returns || 0);
+                const activityRatio = maxBikeActivity > 0 ? activity / maxBikeActivity : 0;
+                
+                // Configure marker based on visualization mode
+                let markerSize, markerOpacity;
+                
+                switch(mapState.visualizationMode) {
+                    case 'standard':
+                        markerSize = 8;
+                        markerOpacity = 0.8;
+                        break;
+                        
+                    case 'size':
+                        // Scale from 4 to 20 based on activity
+                        markerSize = 4 + (activityRatio * 16);
+                        markerOpacity = 0.5 + (activityRatio * 0.5);
+                        break;
+                }
                 
                 L.circleMarker([station.lat, station.lon], {
-                    radius: size,
+                    radius: markerSize,
                     fillColor: '#10B981',
                     color: '#fff',
                     weight: 1,
                     opacity: 1,
-                    fillOpacity: 0.8
+                    fillOpacity: markerOpacity
                 }).bindPopup(`
                     <strong>Bike Station:</strong> ${station.name}<br>
                     Pickups: ${station.pickups || 0}<br>
@@ -501,6 +487,67 @@
                 `).addTo(bikeLayer);
                 
                 bounds.extend([station.lat, station.lon]);
+            });
+        }
+
+        // Add metro stations
+        if (data.metro_stations && data.metro_stations.stations) {
+            const stations = data.metro_stations.stations;
+            const year = mapState.currentYear;
+            
+            // Calculate maximum usage for metro stations
+            let maxUsage = 0;
+            Object.values(stations).forEach(station => {
+                const usage = year === 'total' 
+                    ? Object.values(station.usage).reduce((sum, val) => sum + val, 0)
+                    : station.usage[year] || 0;
+                if (usage > maxUsage) maxUsage = usage;
+            });
+
+            Object.values(stations).forEach(station => {
+                // Skip if zone filter is active and station's zone doesn't match
+                if (!mapState.selectedZones.includes('all') && 
+                    !mapState.selectedZones.includes(station.zone.toString())) {
+                    return;
+                }
+
+                const usage = year === 'total'
+                    ? Object.values(station.usage).reduce((sum, val) => sum + val, 0)
+                    : station.usage[year] || 0;
+                const usageRatio = maxUsage > 0 ? usage / maxUsage : 0;
+                
+                // Configure marker based on visualization mode
+                let markerSize, markerOpacity;
+                
+                switch(mapState.visualizationMode) {
+                    case 'standard':
+                        markerSize = 8;
+                        markerOpacity = 0.8;
+                        break;
+                        
+                    case 'size':
+                        // Scale from 4 to 20 based on usage
+                        markerSize = 4 + (usageRatio * 16);
+                        markerOpacity = 0.5 + (usageRatio * 0.5);
+                        break;
+                }
+
+                L.circleMarker([station.position.lat, station.position.lon], {
+                    radius: markerSize,
+                    fillColor: '#0055A4',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: markerOpacity
+                }).bindPopup(`
+                    <div class="text-center">
+                        <h3 class="font-bold">${station.title}</h3>
+                        <p>Zone ${station.zone}</p>
+                        <p class="font-medium">Usage: ${usage.toLocaleString()} entries/exits</p>
+                    </div>
+                `).addTo(metroLayer);
+                
+                bounds.extend([station.position.lat, station.position.lon]);
             });
         }
         
@@ -520,15 +567,15 @@
     function toggleLayerVisibility(layerName) {
         activeLayerName = layerName;
         
-        if (layerName === 'weather') {
-            correlationMap.addLayer(weatherLayer);
+        if (layerName === 'bike') {
+            correlationMap.addLayer(bikeLayer);
+            correlationMap.removeLayer(metroLayer);
+        } else if (layerName === 'metro') {
+            correlationMap.addLayer(metroLayer);
             correlationMap.removeLayer(bikeLayer);
-        } else if (layerName === 'bike') {
-            correlationMap.removeLayer(weatherLayer);
-            correlationMap.addLayer(bikeLayer);
         } else if (layerName === 'all') {
-            correlationMap.addLayer(weatherLayer);
             correlationMap.addLayer(bikeLayer);
+            correlationMap.addLayer(metroLayer);
         }
     }
 
@@ -576,19 +623,11 @@
             };
         });
         
-        // Create synthetic hourly pattern for bike usage
-        const bikeHourly = [
-            100, 80, 50, 30, 100, 500,
-            2000, 5000, 4500, 2000, 1500, 2500,
-            3000, 2500, 2000, 2200, 3500, 6000,
-            5000, 3000, 2000, 1000, 500, 200
-        ];
         
         return {
             bike: counts,
             bike_dates: dates,
             bike_stations: stations,
-            bike_hourly: bikeHourly
         };
     }
 
@@ -604,9 +643,10 @@
             });
             
             // Fetch data from all sources
-            const [weatherResponse, bikeResponse] = await Promise.all([
+            const [weatherResponse, bikeResponse, metroResponse] = await Promise.all([
                 fetch(`/api/weather?start_date=${startDate}&end_date=${endDate}`),
-                fetch(`/api/bike_sharing?start_date=${startDate}&end_date=${endDate}`)
+                fetch(`/api/bike_sharing?start_date=${startDate}&end_date=${endDate}`),
+                fetch(`/api/metro/stations?year=${new Date(endDate).getFullYear()}`)
             ]);
 
             // Check for errors
@@ -617,7 +657,7 @@
             // Parse JSON responses
             const weatherData = await weatherResponse.json();
             const bikeData = await bikeResponse.json();
-            
+            const metroData = await metroResponse.json();
             // Process data from each source
             const weatherProcessed = processWeatherData(weatherData);
             const bikeProcessed = processBikeData(bikeData);
@@ -637,16 +677,14 @@
                 bike: bikeProcessed.bike,
                 bike_dates: bikeProcessed.bike_dates,
                 bike_stations: bikeProcessed.bike_stations,
-                bike_hourly: bikeProcessed.bike_hourly,
-                
-                // Common data for charts
-                hours: Array.from({length: 24}, (_, i) => `${i}:00`)
+
+                // Metro data
+                metro_stations: metroData,
             };
             
             // Update visualizations
             updateCombinedTimeline(combinedData);
             updateMapMarkers(combinedData);
-            updateDailyPatterns(combinedData);
             
             // Restore opacity
             document.querySelectorAll('.chart-container, .map-container').forEach(el => {

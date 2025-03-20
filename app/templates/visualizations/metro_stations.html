@@ -396,22 +396,6 @@
                 <canvas id="yearly-comparison-chart"></canvas>
             </div>
         </div>
-
-        <!-- Analysis Section -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-10">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Analysis Insights</h2>
-            <div class="analysis-text text-gray-700">
-                <p class="mb-3">
-                    The data visualizations above illustrate several key trends in London's metro station usage from 2019 to 2023:
-                </p>
-                <ul class="list-disc ml-6 mb-4 space-y-2">
-                    <li><strong>Impact of COVID-19:</strong> A significant drop in passenger numbers is visible in 2020 due to the pandemic, with gradual recovery in subsequent years.</li>
-                </ul>
-                <p>
-                    These insights can help transport planners, urban developers, and policymakers make informed decisions about resource allocation, service improvements, and future development.
-                </p>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -466,7 +450,7 @@
         window.stationMap = L.map('station-map').setView([51.505, -0.09], 11);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         }).addTo(window.stationMap);
         
         // Create a layer group to hold all markers

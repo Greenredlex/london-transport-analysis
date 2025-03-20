@@ -16,6 +16,7 @@
 
     <!-- Chart.js for interactive charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     
     <style>
         #bike-map {
@@ -156,16 +157,18 @@
 
         <!-- Statistics Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="stat-card">
-                <div class="stat-label">Total Rides</div>
-                <div id="total-rides" class="stat-value">0</div>
+            <div class="bg-white rounded-lg shadow-md p-6 border-t-4 border-blue-500">
+                <h3 class="text-lg font-semibold mb-2">Total Rides</h3>
+                <p class="text-3xl font-bold text-blue-500" id="total-rides">0</p>
+                <p class="text-sm text-gray-500 mt-2">Total number of rides in the selected date range</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Average Ride Duration</div>
-                <div id="avg-duration" class="stat-value">0m 0s</div>
+            <div class="bg-white rounded-lg shadow-md p-6 border-t-4 border-blue-500">
+                <h3 class="text-lg font-semibold mb-2">Average Ride Duration</h3>
+                <p class="text-3xl font-bold text-blue-500" id="avg-duration">0m 0s</p>
+                <p class="text-sm text-gray-500 mt-2">Average duration of rides in the selected date range</p>
             </div>
-            <div class="stat-card">
-                <div class="stat-label">Active Bike Models</div>
+            <div class="bg-white rounded-lg shadow-md p-6 border-t-4 border-blue-500">
+                <h3 class="text-lg font-semibold mb-2">Active Bike Models</h3>
                 <div id="bike-models-container" class="flex flex-wrap justify-center gap-2 mt-2">
                 </div>
             </div>
@@ -243,10 +246,14 @@
         // Update bike models
         const modelsContainer = document.getElementById('bike-models-container');
         modelsContainer.innerHTML = '';
-        Object.entries(data.summary.bike_models).forEach(([model, count]) => {
+        Object.entries(data.summary.bike_models).forEach(([model, count], index) => {
             const pill = document.createElement('div');
             pill.className = 'bike-model-pill';
-            pill.textContent = `${model}: ${count}`;
+            pill.textContent = `${model}: ${count.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`; // Format number with . as thousands
+            if (index === 1) { // Make the second pill green
+                pill.style.backgroundColor = 'green';
+                pill.style.color = 'white'; // Optional: change text color for better contrast
+            }
             modelsContainer.appendChild(pill);
         });
     }
@@ -410,9 +417,27 @@
                     y: {
                         beginAtZero: true
                     }
+                },
+                plugins: {
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'x'
+                        },
+                        
+                        zoom: {
+                            wheel: {
+                                enabled: true
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'x'
+                        }
+                    }
                 }
             }
-        });
+        }); 
     }
 
     // Fetch and update data

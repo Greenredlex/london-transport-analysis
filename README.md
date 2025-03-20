@@ -22,9 +22,6 @@ This project aims to analyze and visualize the correlations between data from th
 
 - **data/**: Contains raw and processed datasets.
   - **raw/**: Raw data files.
-    - **underground_data.csv**: London Underground ridership statistics.
-    - **bike_sharing.csv**: Bike-sharing usage data.
-    - **london_weather.csv**: Weather data for London.
   - **processed/**: Processed datasets for analysis.
     - **combined_dataset.csv**: Combined dataset for analysis.
 
